@@ -1,4 +1,4 @@
-const BASE_HOST = '127.0.0.1'
+const BASE_HOST = typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1'
 const CHAT_URL = `http://${BASE_HOST}:10008`
 const API_URL = `http://${BASE_HOST}:10002`
 const WS_URL = `ws://${BASE_HOST}:10001`
