@@ -77,7 +77,7 @@
               <div class="flex items-center justify-between mb-1">
                 <span class="text-xs text-[#999]">第{{ rIdx + 1 }}行</span>
                 <van-icon
-                  v-if="!field.presetRows"
+                  v-if="!(field as any).presetRows"
                   name="cross"
                   class="text-[#999] cursor-pointer"
                   @click="removeTableRow(field.key, rIdx)"
@@ -87,7 +87,7 @@
                 <div v-for="col in field.columns" :key="col">
                   <div class="text-[10px] text-[#999]">{{ col }}</div>
                   <span
-                    v-if="field.readonlyColumns && field.readonlyColumns.includes(col)"
+                    v-if="(field as any).readonlyColumns && (field as any).readonlyColumns.includes(col)"
                     class="text-xs text-[#333] block py-1"
                   >{{ row[col] }}</span>
                   <select
@@ -109,9 +109,9 @@
               </div>
             </div>
             <div
-              v-if="!field.presetRows"
+              v-if="!(field as any).presetRows"
               class="flex items-center justify-center gap-1 py-2 border border-dashed border-[#ddd] rounded-lg cursor-pointer text-xs text-[#999]"
-              @click="addTableRow(field.key, field.columns)"
+              @click="addTableRow(field.key, field.columns!)"
             >
               <van-icon name="plus" /> 添加一行
             </div>
@@ -178,7 +178,24 @@ const approvalStore = useApprovalStore()
 const contactStore = useContactStore()
 const userStore = useUserStore()
 
-const templates = [
+interface TemplateField {
+  key: string
+  label: string
+  type: string
+  placeholder?: string
+  options?: string[]
+  columns?: string[]
+  presetRows?: Record<string, string>[]
+  readonlyColumns?: string[]
+}
+
+interface Template {
+  value: string
+  label: string
+  fields: TemplateField[]
+}
+
+const templates: Template[] = [
   {
     value: 'expense',
     label: '支出审批单',
@@ -196,7 +213,7 @@ const templates = [
       { key: 'contractName', label: '合同书名称', type: 'text', placeholder: '请输入合同书名称' },
       { key: 'tripLocation', label: '出差地点', type: 'text', placeholder: '请输入出差地点' },
       { key: 'tripPeriod', label: '出差期间', type: 'text', placeholder: '请输入出差期间' },
-      { key: 'items', label: '费用明细', type: 'table', columns: ['预算编号', '预算项目', '费用所属部门', '摘要', '金额'] },
+      { key: 'items', label: '费用明细', type: 'table', columns: ['预算编号', '预算项目', '费用所属部门', '摘要', '金额'], presetRows: undefined, readonlyColumns: undefined },
       { key: 'totalAmount', label: '合计金额', type: 'text', placeholder: '0.00' },
       { key: 'totalAmountCn', label: '合计大写', type: 'text', placeholder: '请输入大写金额' },
     ],
@@ -276,7 +293,7 @@ const form = reactive({
 
 const showPicker = ref(false)
 
-const selectTemplate = (t: typeof templates[0]) => {
+const selectTemplate = (t: Template) => {
   form.type = t.value
   form.content = {}
   t.fields.forEach((f: any) => {
