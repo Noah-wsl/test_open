@@ -24,9 +24,31 @@
       <div class="px-4 py-4 border-b border-[#f5f5f5]">
         <div class="text-sm font-medium text-[#333] mb-3">审批内容</div>
         <div class="space-y-2">
-          <div v-for="(val, key) in instance.content" :key="key" class="flex">
-            <span class="text-xs text-[#999] w-20 flex-shrink-0">{{ key }}</span>
-            <span class="text-sm text-[#333] flex-1 break-all">{{ val }}</span>
+          <div
+            v-for="(val, key) in instance.content"
+            :key="key"
+            class="flex"
+            :class="Array.isArray(val) && val.length > 0 && typeof val[0] === 'object' ? 'flex-col' : ''"
+          >
+            <span class="text-xs text-[#999] w-20 flex-shrink-0 mb-1">{{ key }}</span>
+            <div v-if="Array.isArray(val) && val.length > 0 && typeof val[0] === 'string'" class="flex flex-wrap gap-1">
+              <span v-for="(item, i) in val" :key="i" class="text-xs px-1.5 py-0.5 bg-[#f0f7ff] text-primary rounded">{{ item }}</span>
+            </div>
+            <div v-else-if="Array.isArray(val) && val.length > 0 && typeof val[0] === 'object'" class="w-full overflow-x-auto">
+              <table class="w-full text-xs border border-[#eee]">
+                <thead>
+                  <tr class="bg-[#f5f7fa]">
+                    <th v-for="(col, ci) in Object.keys(val[0])" :key="ci" class="px-2 py-1 border border-[#eee] text-[#666]">{{ col }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, ri) in val" :key="ri">
+                    <td v-for="(col, ci) in Object.keys(val[0])" :key="ci" class="px-2 py-1 border border-[#eee] text-[#333]">{{ row[col] || '-' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <span v-else class="text-sm text-[#333] flex-1 break-all">{{ val }}</span>
           </div>
         </div>
       </div>
@@ -154,9 +176,9 @@ const dotClass = (status: string) => {
 
 const formatTime = (ts: number) => formatMessageTime(ts)
 
-const handleAction = (action: 'approved' | 'rejected') => {
+const handleAction = async (action: 'approved' | 'rejected') => {
   if (!instance.value) return
-  const ok = approvalStore.processApproval({
+  const ok = await approvalStore.processApproval({
     id: instance.value.id,
     action,
     comment: comment.value,

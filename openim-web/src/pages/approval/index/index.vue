@@ -40,7 +40,7 @@
             </span>
           </div>
           <div class="mt-2 text-xs text-[#666] line-clamp-1">
-            <span v-for="(val, key) in item.content" :key="key" class="mr-3">{{ key }}: {{ val }}</span>
+            <span v-for="(val, key) in item.content" :key="key" class="mr-3">{{ key }}: {{ Array.isArray(val) ? (typeof val[0]==='object' ? `[${val.length}条明细]` : val.join(',')) : val }}</span>
           </div>
         </div>
       </div>

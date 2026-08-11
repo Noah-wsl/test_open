@@ -1,0 +1,1 @@
+var e=(r=>(r[r.RecivedFriendApplication=0]="RecivedFriendApplication",r[r.SentFriendApplication=1]="SentFriendApplication",r[r.RecivedGroupApplication=2]="RecivedGroupApplication",r[r.SentGroupApplication=3]="SentGroupApplication",r))(e||{});export{e as A};
