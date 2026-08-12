@@ -32,15 +32,12 @@ export interface ApprovalInstance {
   updateTime: number
 }
 
-const STORAGE_KEY = 'global_approval_instances'
+import { getApprovalInstances, setApprovalInstances } from '@/utils/storage'
 
-const loadInstances = (): ApprovalInstance[] => {
-  const raw = localStorage.getItem(STORAGE_KEY)
-  return raw ? JSON.parse(raw) : []
-}
+const loadInstances = (): ApprovalInstance[] => getApprovalInstances()
 
 const saveInstances = (list: ApprovalInstance[]) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
+  setApprovalInstances(list)
 }
 
 import { CustomMessageType } from '@/constants/enum'
@@ -60,7 +57,11 @@ const sendApprovalNotification = async (
         instance,
       },
     })
-    const { data: message } = await IMSDK.createCustomMessage(customData, '', '')
+    const { data: message } = await IMSDK.createCustomMessage({
+      data: customData,
+      extension: '',
+      description: '',
+    })
     await IMSDK.sendMessage({ recvID, groupID: '', message: message as MessageItem })
   } catch (error) {
     console.error('send approval notification failed', error)
@@ -224,6 +225,16 @@ const useStore = defineStore('approval', {
     },
     syncRemoteInstance(remoteInstance: ApprovalInstance) {
       if (!remoteInstance || !remoteInstance.id) return
+      const uid = getIMUserID()
+      // 仅保留与当前用户相关的审批，避免无关数据污染本地视图
+      const isRelated =
+        remoteInstance.applicant.userID === uid ||
+        remoteInstance.nodes.some(
+          (n) => n.approver.userID === uid && n.status !== 'pending',
+        ) ||
+        (remoteInstance.status === 'pending' &&
+          remoteInstance.nodes.some((n) => n.approver.userID === uid))
+      if (!isRelated) return
       const idx = this.instances.findIndex((i) => i.id === remoteInstance.id)
       if (idx !== -1) {
         this.instances[idx] = remoteInstance
