@@ -40,7 +40,7 @@
             </span>
           </div>
           <div class="mt-2 text-xs text-[#666] line-clamp-1">
-            <span v-for="(val, key) in item.content" :key="key" class="mr-3">{{ key }}: {{ Array.isArray(val) ? (typeof val[0]==='object' ? `[${val.length}条明细]` : val.join(',')) : val }}</span>
+            <span v-for="(val, key) in item.content" :key="key" class="mr-3">{{ contentLabel(item.type, key) }}: {{ Array.isArray(val) ? (typeof val[0]==='object' ? `[${val.length}条明细]` : val.join(',')) : val }}</span>
           </div>
         </div>
       </div>
@@ -63,12 +63,45 @@
 <script setup lang="ts">
 import Avatar from '@/components/Avatar/index.vue'
 import useApprovalStore from '@/store/modules/approval'
-import { formatMessageTime } from '@/utils/imCommon'
+import useConversationStore from '@/store/modules/conversation'
+import { APPROVAL_TEMPLATES } from '@/utils/approvalTemplate'
+import { formatMessageTime, IMSDK } from '@/utils/imCommon'
+import { MessageType, ViewType } from '@openim/wasm-client-sdk'
+import { CustomMessageType } from '@/constants/enum'
 
 const router = useRouter()
 const approvalStore = useApprovalStore()
+const conversationStore = useConversationStore()
 
 const activeTab = ref<'my' | 'pending' | 'processed'>('my')
+
+// 从所有会话的最近历史消息中同步审批实例，解决离线/漏同步问题
+const syncApprovalsFromHistory = async () => {
+  const convs = conversationStore.storeConversationList
+  for (const conv of convs) {
+    try {
+      const { data } = await IMSDK.getAdvancedHistoryMessageList({
+        conversationID: conv.conversationID,
+        count: 30,
+        startClientMsgID: '',
+        viewType: ViewType.History,
+      })
+      const messages = data?.messageList || []
+      for (const msg of messages) {
+        if (msg.contentType !== MessageType.CustomMessage) continue
+        const customData = JSON.parse(msg.customElem?.data || '{}')
+        if (customData.customType !== CustomMessageType.ApprovalMessage) continue
+        if (customData.data?.instance) {
+          approvalStore.syncRemoteInstance(customData.data.instance)
+        }
+      }
+    } catch {}
+  }
+}
+
+onMounted(() => {
+  syncApprovalsFromHistory()
+})
 
 const tabs = computed(() => [
   { key: 'my' as const, label: '我发起的', badge: 0 },
@@ -89,12 +122,19 @@ const currentList = computed(() => {
   }
 })
 
+const contentLabel = (type: string, key: string) => {
+  const tpl = APPROVAL_TEMPLATES[type]
+  const field = tpl?.fields.find((f) => f.key === key)
+  return field?.label || key
+}
+
 const statusText = (status: string) => {
   const map: Record<string, string> = {
     pending: '审批中',
     approved: '已通过',
     rejected: '已驳回',
     transferred: '已转交',
+    withdrawn: '已撤回',
   }
   return map[status] || status
 }
@@ -105,6 +145,7 @@ const statusClass = (status: string) => {
     approved: 'bg-[#f6ffed] text-[#52c41a]',
     rejected: 'bg-[#fff1f0] text-[#ff4d4f]',
     transferred: 'bg-[#e6f7ff] text-[#1890ff]',
+    withdrawn: 'bg-[#f5f5f5] text-[#999]',
   }
   return map[status] || ''
 }

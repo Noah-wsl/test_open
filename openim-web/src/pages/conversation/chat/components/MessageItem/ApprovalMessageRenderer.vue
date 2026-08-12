@@ -15,7 +15,7 @@
       </div>
       <div class="approval-row">
         <span class="approval-label">当前节点</span>
-        <span class="approval-value">{{ data.currentNode || '待审批' }}</span>
+        <span class="approval-value">{{ currentNode || '待审批' }}</span>
       </div>
     </div>
     <div class="approval-card-footer">点击查看详情</div>
@@ -31,7 +31,7 @@ const props = defineProps<{
 
 const router = useRouter()
 
-const data = computed(() => {
+const data = computed<Record<string, any>>(() => {
   try {
     const raw = JSON.parse(props.message.customElem?.data || '{}')
     const msgData = raw.data || {}
@@ -51,6 +51,7 @@ const statusText = computed(() => {
     approved: '已通过',
     rejected: '已驳回',
     transferred: '已转交',
+    withdrawn: '已撤回',
   }
   return map[data.value.status] || '审批中'
 })
@@ -61,8 +62,19 @@ const statusColor = computed(() => {
     approved: '#52c41a',
     rejected: '#ff4d4f',
     transferred: '#1890ff',
+    withdrawn: '#999999',
   }
   return map[data.value.status] || '#faad14'
+})
+
+// 当前待审批环节（含环节名称）
+const currentNode = computed(() => {
+  const d = data.value
+  if (!d?.nodes?.length) return ''
+  const node = d.nodes.find((n: any) => n.status === 'pending') || d.nodes.find((n: any) => n.status === 'withdrawn')
+  if (!node) return d.status === 'approved' ? '全部通过' : ''
+  const step = node.stepName ? `${node.stepName} · ` : ''
+  return `${step}${node.approver?.nickname || ''}`
 })
 
 const toDetail = () => {

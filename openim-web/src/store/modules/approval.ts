@@ -13,8 +13,9 @@ export interface ApprovalApprover {
 
 export interface ApprovalNode {
   level: number
-  approver: ApprovalApprover
-  status: 'pending' | 'approved' | 'rejected' | 'transferred'
+  stepName?: string
+  approver: ApprovalApprover | null
+  status: 'pending' | 'approved' | 'rejected' | 'transferred' | 'withdrawn'
   comment?: string
   time?: number
   transferTo?: ApprovalApprover
@@ -27,12 +28,15 @@ export interface ApprovalInstance {
   applicant: ApprovalApprover
   content: Record<string, any>
   nodes: ApprovalNode[]
-  status: 'pending' | 'approved' | 'rejected' | 'transferred'
+  status: 'pending' | 'approved' | 'rejected' | 'transferred' | 'withdrawn'
   createTime: number
   updateTime: number
+  adjustments?: string[]
 }
 
 import { getApprovalInstances, setApprovalInstances } from '@/utils/storage'
+import { getAdjustedSteps } from '@/utils/approvalTemplate'
+import type { ApprovalStepTemplate } from '@/utils/approvalTemplate'
 
 const loadInstances = (): ApprovalInstance[] => getApprovalInstances()
 
@@ -87,14 +91,14 @@ const useStore = defineStore('approval', {
       return state.instances.filter((i) => {
         if (i.status !== 'pending') return false
         const currentNode = i.nodes.find((n) => n.status === 'pending')
-        return currentNode?.approver.userID === uid
+        return currentNode?.approver?.userID === uid
       })
     },
     storeProcessedApprovals: (state) => {
       const uid = getIMUserID()
       return state.instances.filter((i) => {
         const hasProcessed = i.nodes.some(
-          (n) => n.status !== 'pending' && n.approver.userID === uid,
+          (n) => n.status !== 'pending' && n.approver?.userID === uid,
         )
         return hasProcessed || i.applicant.userID === uid
       })
@@ -109,34 +113,58 @@ const useStore = defineStore('approval', {
       type: string
       applicant: ApprovalApprover
       content: Record<string, any>
-      approvers: ApprovalApprover[]
+      approvers: Array<ApprovalApprover | null>
+      steps?: ApprovalStepTemplate[]
+      adjustments?: string[]
     }) {
       const now = Date.now()
+      // 步骤模板（优先使用传入的，否则按类型规则生成）
+      let steps: ApprovalStepTemplate[] = payload.steps || []
+      let adjustments = payload.adjustments || []
+      if (!steps.length) {
+        const adjusted = getAdjustedSteps(payload.type, payload.content)
+        steps = adjusted.steps
+        adjustments = adjusted.adjustments.map((a) => a.message)
+      }
+      // 步骤与审批人一一对应；未指定审批人的环节自动跳过（auto-pass），不阻塞流程
+      const nodes: ApprovalNode[] = steps.map((s, idx) => {
+        const approver = payload.approvers[idx] ?? null
+        return {
+          level: idx + 1,
+          stepName: s.stepName,
+          approver,
+          status: approver ? 'pending' : 'approved',
+          comment: approver ? '' : '未指定审批人，自动跳过',
+          time: approver ? undefined : now,
+        }
+      })
       const instance: ApprovalInstance = {
         id: uuidV4(),
         title: payload.title,
         type: payload.type,
         applicant: payload.applicant,
         content: payload.content,
-        nodes: payload.approvers.map((a, idx) => ({
-          level: idx + 1,
-          approver: a,
-          status: idx === 0 ? 'pending' : 'pending',
-        })),
+        nodes,
         status: 'pending',
         createTime: now,
         updateTime: now,
+        adjustments,
       }
       this.instances.unshift(instance)
       this.syncStorage()
 
-      const firstApprover = payload.approvers[0]
-      if (firstApprover) {
+      // 通知第一个真正待审批的环节（自动跳过未指定审批人的环节）
+      const firstPendingNode = nodes.find((n) => n.status === 'pending')
+      if (firstPendingNode?.approver) {
         await sendApprovalNotification(
-          firstApprover.userID,
+          firstPendingNode.approver.userID,
           `您有一条新的审批待处理：《${payload.title}》，来自 ${payload.applicant.nickname}`,
           instance,
         )
+      } else {
+        // 所有环节都未指定审批人，自动全部通过
+        instance.status = 'approved'
+        this.syncStorage()
       }
 
       return instance
@@ -154,18 +182,19 @@ const useStore = defineStore('approval', {
       if (!currentNode) return false
 
       const uid = getIMUserID()
-      if (currentNode.approver.userID !== uid) return false
+      if (!currentNode.approver || currentNode.approver.userID !== uid) return false
 
       currentNode.status = payload.action
       currentNode.comment = payload.comment || ''
       currentNode.time = Date.now()
 
-      const approverNickname = currentNode.approver.nickname
+      const approverNickname = currentNode.approver?.nickname || '审批人'
 
       if (payload.action === 'transferred' && payload.transferTo) {
         currentNode.transferTo = payload.transferTo
         instance.nodes.splice(currentNode.level, 0, {
           level: currentNode.level + 1,
+          stepName: currentNode.stepName,
           approver: payload.transferTo,
           status: 'pending',
         })
@@ -192,8 +221,11 @@ const useStore = defineStore('approval', {
           instance,
         )
       } else if (payload.action === 'approved') {
-        const nextNode = instance.nodes.find((n) => n.level === currentNode.level + 1)
-        if (nextNode) {
+        // 跳过未指定审批人（自动通过）的环节，找到下一个真正待审批的环节
+        const nextNode = instance.nodes.find(
+          (n) => n.level > currentNode.level && n.status === 'pending',
+        )
+        if (nextNode && nextNode.approver) {
           // 通知下一级审批人
           await sendApprovalNotification(
             nextNode.approver.userID,
@@ -220,6 +252,33 @@ const useStore = defineStore('approval', {
       this.syncStorage()
       return true
     },
+    async withdrawApproval(id: string) {
+      const instance = this.instances.find((i) => i.id === id)
+      if (!instance) return false
+      // 仅申请人可撤回，且仅审批中可撤回
+      if (instance.applicant.userID !== getIMUserID()) return false
+      if (instance.status !== 'pending') return false
+      instance.status = 'withdrawn'
+      instance.updateTime = Date.now()
+      // 当前待审批节点同步标记为已撤回
+      instance.nodes.forEach((n) => {
+        if (n.status === 'pending') {
+          n.status = 'withdrawn'
+          n.time = Date.now()
+        }
+      })
+      this.syncStorage()
+      // 通知当前待审批环节
+      const currentNode = instance.nodes.find((n) => n.status === 'withdrawn')
+      if (currentNode?.approver) {
+        await sendApprovalNotification(
+          currentNode.approver.userID,
+          `审批《${instance.title}》已被申请人 ${instance.applicant.nickname} 撤回`,
+          instance,
+        )
+      }
+      return true
+    },
     getApprovalById(id: string) {
       return this.instances.find((i) => i.id === id)
     },
@@ -230,10 +289,10 @@ const useStore = defineStore('approval', {
       const isRelated =
         remoteInstance.applicant.userID === uid ||
         remoteInstance.nodes.some(
-          (n) => n.approver.userID === uid && n.status !== 'pending',
+          (n) => n.approver?.userID === uid && n.status !== 'pending',
         ) ||
         (remoteInstance.status === 'pending' &&
-          remoteInstance.nodes.some((n) => n.approver.userID === uid))
+          remoteInstance.nodes.some((n) => n.approver?.userID === uid))
       if (!isRelated) return
       const idx = this.instances.findIndex((i) => i.id === remoteInstance.id)
       if (idx !== -1) {

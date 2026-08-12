@@ -6,16 +6,17 @@
       <div class="mb-4">
         <div class="text-sm text-[#666] mb-2">审批类型</div>
         <div class="flex flex-wrap gap-2">
-          <span
-            v-for="t in templates"
-            :key="t.value"
+          <div
+            v-for="tpl in templates"
+            :key="tpl.type"
             class="px-3 py-1.5 text-sm rounded-full border cursor-pointer"
-            :class="form.type === t.value ? 'border-primary bg-[#f0f7ff] text-primary' : 'border-[#ddd] text-[#666]'"
-            @click="selectTemplate(t)"
+            :class="form.type === tpl.type ? 'border-primary bg-[#f0f7ff] text-primary' : 'border-[#ddd] text-[#666]'"
+            @click="selectTemplate(tpl.type)"
           >
-            {{ t.label }}
-          </span>
+            {{ tpl.typeName }}
+          </div>
         </div>
+        <div class="text-xs text-[#999] mt-1.5">{{ currentTemplate.description }}</div>
       </div>
 
       <!-- Title -->
@@ -31,19 +32,25 @@
       <!-- Dynamic fields -->
       <div class="mb-4">
         <div class="text-sm text-[#666] mb-2">审批内容</div>
-        <div
-          v-for="(field, idx) in currentTemplate.fields"
-          :key="idx"
-          class="mb-3"
-        >
-          <div class="text-xs text-[#999] mb-1">{{ field.label }}</div>
+        <div v-for="field in visibleFields" :key="field.key" class="mb-3">
+          <!-- readonly / auto-filled -->
+          <div v-if="field.type === 'readonly'">
+            <div class="text-xs text-[#999] mb-1">{{ field.label }}</div>
+            <div class="w-full px-3 py-2 bg-[#f5f7fa] rounded-lg text-sm text-[#333]">
+              {{ form.content[field.key] || '-' }}
+            </div>
+          </div>
+
+          <!-- text / date / month -->
           <input
-            v-if="field.type === 'text' || field.type === 'date'"
+            v-else-if="field.type === 'text' || field.type === 'date' || field.type === 'month'"
             v-model="form.content[field.key]"
             :type="field.type"
             class="w-full px-3 py-2 border border-[#ddd] rounded-lg text-sm focus:outline-none focus:border-primary"
             :placeholder="field.placeholder"
           />
+
+          <!-- textarea -->
           <textarea
             v-else-if="field.type === 'textarea'"
             v-model="form.content[field.key]"
@@ -51,6 +58,18 @@
             class="w-full px-3 py-2 border border-[#ddd] rounded-lg text-sm focus:outline-none focus:border-primary"
             :placeholder="field.placeholder"
           />
+
+          <!-- select -->
+          <select
+            v-else-if="field.type === 'select' && field.options"
+            v-model="form.content[field.key]"
+            class="w-full px-3 py-2 border border-[#ddd] rounded-lg text-sm focus:outline-none focus:border-primary bg-white"
+          >
+            <option value="">请选择</option>
+            <option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option>
+          </select>
+
+          <!-- checkbox -->
           <div v-else-if="field.type === 'checkbox' && field.options" class="flex flex-wrap gap-2 mt-1">
             <label
               v-for="opt in field.options"
@@ -68,6 +87,8 @@
               {{ opt }}
             </label>
           </div>
+
+          <!-- table -->
           <div v-else-if="field.type === 'table' && field.columns" class="mt-1">
             <div
               v-for="(row, rIdx) in (form.content[field.key] || [])"
@@ -77,7 +98,7 @@
               <div class="flex items-center justify-between mb-1">
                 <span class="text-xs text-[#999]">第{{ rIdx + 1 }}行</span>
                 <van-icon
-                  v-if="!(field as any).presetRows"
+                  v-if="(form.content[field.key] || []).length > 1"
                   name="cross"
                   class="text-[#999] cursor-pointer"
                   @click="removeTableRow(field.key, rIdx)"
@@ -86,22 +107,9 @@
               <div class="grid grid-cols-2 gap-2">
                 <div v-for="col in field.columns" :key="col">
                   <div class="text-[10px] text-[#999]">{{ col }}</div>
-                  <span
-                    v-if="(field as any).readonlyColumns && (field as any).readonlyColumns.includes(col)"
-                    class="text-xs text-[#333] block py-1"
-                  >{{ row[col] }}</span>
-                  <select
-                    v-else-if="col === '是否已核对'"
-                    v-model="row[col]"
-                    class="w-full px-2 py-1 border border-[#ddd] rounded text-xs focus:outline-none focus:border-primary bg-white"
-                  >
-                    <option value="">请选择</option>
-                    <option value="是">是</option>
-                    <option value="否">否</option>
-                  </select>
                   <input
-                    v-else
                     v-model="row[col]"
+                    :type="field.columnsType && field.columnsType[col] === 'number' ? 'number' : 'text'"
                     class="w-full px-2 py-1 border border-[#ddd] rounded text-xs focus:outline-none focus:border-primary"
                     placeholder="请输入"
                   />
@@ -109,38 +117,72 @@
               </div>
             </div>
             <div
-              v-if="!(field as any).presetRows"
               class="flex items-center justify-center gap-1 py-2 border border-dashed border-[#ddd] rounded-lg cursor-pointer text-xs text-[#999]"
               @click="addTableRow(field.key, field.columns!)"
             >
               <van-icon name="plus" /> 添加一行
             </div>
           </div>
+
+          <!-- required marker -->
+          <div v-if="isFieldRequired(field)" class="text-[10px] text-[#ff4d4f] mt-0.5">* 必填</div>
         </div>
       </div>
 
-      <!-- Approvers -->
+      <!-- Dynamic approval flow -->
       <div class="mb-4">
         <div class="flex items-center justify-between mb-2">
-          <span class="text-sm text-[#666]">审批人（按顺序逐级审批）</span>
-          <span class="text-xs text-primary cursor-pointer" @click="addApprover">+ 添加</span>
+          <span class="text-sm text-[#666]">审批流程</span>
+          <span class="text-xs text-[#999]">未指定审批人的环节将自动跳过</span>
         </div>
-        <div class="flex items-center gap-2 flex-wrap">
-          <div
-            v-for="(appr, idx) in form.approvers"
-            :key="idx"
-            class="flex items-center gap-2 bg-[#f5f7fa] rounded-lg px-3 py-2"
-          >
-            <Avatar :size="28" :src="appr.faceURL" :desc="appr.nickname" />
-            <span class="text-xs text-[#333]">{{ appr.nickname }}</span>
-            <van-icon name="cross" class="text-[#999] cursor-pointer" @click="removeApprover(idx)" />
+
+        <!-- rule adjustments -->
+        <div
+          v-for="(adj, i) in approvalSteps.adjustments"
+          :key="i"
+          class="mb-2 text-xs px-2.5 py-1.5 rounded"
+          :class="adj.level === 'warning' ? 'bg-[#fff7e6] text-[#faad14]' : 'bg-[#f0f7ff] text-primary'"
+        >
+          <van-icon name="info-o" class="mr-1" />{{ adj.message }}
+        </div>
+
+        <!-- steps -->
+        <div
+          v-for="(step, idx) in approvalSteps.steps"
+          :key="idx"
+          class="mb-3 border border-[#eee] rounded-lg p-3"
+        >
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <span class="text-sm text-[#333] font-medium">第{{ idx + 1 }}级 · {{ step.stepName }}</span>
+              <span v-if="step.desc" class="text-xs text-[#999] ml-2">{{ step.desc }}</span>
+            </div>
           </div>
-          <div v-if="form.approvers.length === 0" class="text-xs text-[#999]">请点击添加选择审批人</div>
+          <div v-if="form.stepApprovers[idx]" class="flex items-center gap-2 mb-2">
+            <Avatar
+              :size="28"
+              :src="form.stepApprovers[idx]?.faceURL"
+              :desc="form.stepApprovers[idx]?.nickname"
+            />
+            <span class="text-xs text-[#333]">{{ form.stepApprovers[idx]?.nickname }}</span>
+            <van-icon name="cross" class="text-[#999] cursor-pointer" @click="removeStepApprover(idx)" />
+          </div>
+          <div v-else class="text-xs text-[#faad14] mb-2">未指定审批人</div>
+          <van-button size="small" type="primary" plain round @click="openPicker(idx)">
+            选择审批人
+          </van-button>
         </div>
       </div>
 
       <!-- Submit -->
-      <van-button type="primary" block round :disabled="!canSubmit" @click="submit">
+      <van-button
+        type="primary"
+        block
+        round
+        :disabled="!canSubmit"
+        :class="{ 'opacity-50 grayscale': !canSubmit }"
+        @click="submit"
+      >
         提交审批
       </van-button>
     </div>
@@ -148,7 +190,12 @@
     <!-- Approver picker modal -->
     <van-popup v-model:show="showPicker" position="bottom" round>
       <div class="p-4">
-        <div class="text-center text-sm font-medium mb-3">选择审批人</div>
+        <div class="text-center text-sm font-medium mb-1">
+          选择审批人
+        </div>
+        <div v-if="pickerStep !== null" class="text-center text-xs text-[#999] mb-3">
+          当前环节：{{ approvalSteps.steps[pickerStep]?.stepName }}
+        </div>
         <div class="max-h-[300px] overflow-y-auto">
           <div
             v-for="friend in contactStore.storeFriendList"
@@ -171,6 +218,12 @@ import Avatar from '@/components/Avatar/index.vue'
 import useApprovalStore from '@/store/modules/approval'
 import useContactStore from '@/store/modules/contact'
 import useUserStore from '@/store/modules/user'
+import {
+  APPROVAL_TEMPLATES,
+  getAdjustedSteps,
+  calcTableTotal,
+} from '@/utils/approvalTemplate'
+import type { TemplateField } from '@/utils/approvalTemplate'
 import { feedbackToast } from '@/utils/common'
 
 const router = useRouter()
@@ -178,167 +231,109 @@ const approvalStore = useApprovalStore()
 const contactStore = useContactStore()
 const userStore = useUserStore()
 
-interface TemplateField {
-  key: string
-  label: string
-  type: string
-  placeholder?: string
-  options?: string[]
-  columns?: string[]
-  presetRows?: Record<string, string>[]
-  readonlyColumns?: string[]
-}
-
-interface Template {
-  value: string
-  label: string
-  fields: TemplateField[]
-}
-
-const templates: Template[] = [
-  {
-    value: 'expense',
-    label: '支出审批单',
-    fields: [
-      { key: 'applyDate', label: '申请日期', type: 'date', placeholder: '请选择申请日期' },
-      { key: 'department', label: '科室', type: 'text', placeholder: '请输入科室' },
-      { key: 'name', label: '姓名', type: 'text', placeholder: '请输入姓名' },
-      { key: 'employeeId', label: '员工编号', type: 'text', placeholder: '请输入员工编号' },
-      { key: 'docType', label: '单据类型', type: 'checkbox', options: ['借款', '报销', '提现', '预付', '还款/还票', '预算内', '预算外'] },
-      { key: 'payMethod', label: '支付方式', type: 'checkbox', options: ['现金', '银行卡', '托收', '支票', '电汇'] },
-      { key: 'receiverName', label: '收款单位名称', type: 'text', placeholder: '请输入收款单位名称' },
-      { key: 'receiverBank', label: '收款单位开户银行', type: 'text', placeholder: '请输入开户银行' },
-      { key: 'receiverAccount', label: '收款单位账号', type: 'text', placeholder: '请输入账号' },
-      { key: 'contractNo', label: '合同书编号', type: 'text', placeholder: '请输入合同书编号' },
-      { key: 'contractName', label: '合同书名称', type: 'text', placeholder: '请输入合同书名称' },
-      { key: 'tripLocation', label: '出差地点', type: 'text', placeholder: '请输入出差地点' },
-      { key: 'tripPeriod', label: '出差期间', type: 'text', placeholder: '请输入出差期间' },
-      { key: 'items', label: '费用明细', type: 'table', columns: ['预算编号', '预算项目', '费用所属部门', '摘要', '金额'], presetRows: undefined, readonlyColumns: undefined },
-      { key: 'totalAmount', label: '合计金额', type: 'text', placeholder: '0.00' },
-      { key: 'totalAmountCn', label: '合计大写', type: 'text', placeholder: '请输入大写金额' },
-    ],
-  },
-  {
-    value: 'salary',
-    label: '工资发放审批单',
-    fields: [
-      { key: 'department', label: '所属部门', type: 'text', placeholder: '请输入所属部门' },
-      { key: 'salaryMonth', label: '工资发放月份', type: 'text', placeholder: '2025-01' },
-      { key: 'applyDate', label: '申请日期', type: 'date', placeholder: '请选择申请日期' },
-      { key: 'totalPeople', label: '发放总人数', type: 'text', placeholder: '0' },
-      { key: 'shouldPay', label: '应发总金额（元）', type: 'text', placeholder: '0.00' },
-      { key: 'actualPay', label: '实发总金额（元）', type: 'text', placeholder: '0.00' },
-      { key: 'bankCount', label: '银行代发总笔数', type: 'text', placeholder: '0' },
-      { key: 'bankAmount', label: '代发总金额（元）', type: 'text', placeholder: '0.00' },
-      { key: 'cashAmount', label: '现金发放总金额（元）', type: 'text', placeholder: '0.00' },
-      {
-        key: 'attachments',
-        label: '附件明细清单',
-        type: 'table',
-        columns: ['序号', '附件名称', '是否已核对', '备注'],
-        presetRows: [
-          { '序号': '1', '附件名称': '月度工资核算表', '是否已核对': '', '备注': '含考勤、绩效、扣款明细' },
-          { '序号': '2', '附件名称': '绩效工资核算表', '是否已核对': '', '备注': '含考核打分、绩效标准' },
-          { '序号': '3', '附件名称': '社保公积金扣款明细表', '是否已核对': '', '备注': '个人+单位部分核对' },
-          { '序号': '4', '附件名称': '个税计算表', '是否已核对': '', '备注': '累计预扣法核对' },
-          { '序号': '5', '附件名称': '考勤请假扣款明细表', '是否已核对': '', '备注': '事假、病假、旷工扣款' },
-          { '序号': '6', '附件名称': '补贴发放明细表', '是否已核对': '', '备注': '交通、餐补、通讯补等' },
-          { '序号': '7', '附件名称': '离职人员薪资结算表', '是否已核对': '', '备注': '含离职交接单、扣款说明' },
-          { '序号': '8', '附件名称': '薪资异动审批单（补发/追扣）', '是否已核对': '', '备注': '单独审批附件' },
-          { '序号': '9', '附件名称': '外聘专家劳务费审批表', '是否已核对': '', '备注': '单独劳务发放附件' },
-          { '序号': '10', '附件名称': '其他附件', '是否已核对': '', '备注': '' },
-        ],
-        readonlyColumns: ['序号', '附件名称'],
-      },
-      { key: 'notes', label: '备注说明', type: 'textarea', placeholder: '1. 所有附件必须随审批单一并提交，无附件的审批申请一律不予受理；\n2. 薪资发放必须完成全流程审批签字，严禁口头同意、事后补签；\n3. 离职人员薪资、补发/追扣工资、劳务费必须单独标注，额外附审批附件；\n4. 审批完成后，审批单、工资表、附件统一归档留存，保存期限不低于3年；\n5. 财务付款前必须核对审批手续完整性，手续不全严禁付款。' },
-    ],
-  },
-  {
-    value: 'leave',
-    label: '请假',
-    fields: [
-      { key: 'leaveType', label: '请假类型', type: 'text', placeholder: '事假 / 病假 / 年假' },
-      { key: 'startDate', label: '开始时间', type: 'text', placeholder: '2025-01-01' },
-      { key: 'endDate', label: '结束时间', type: 'text', placeholder: '2025-01-02' },
-      { key: 'reason', label: '请假事由', type: 'textarea', placeholder: '请输入请假事由' },
-    ],
-  },
-  {
-    value: 'business',
-    label: '出差',
-    fields: [
-      { key: 'destination', label: '出差地点', type: 'text', placeholder: '目的地' },
-      { key: 'startDate', label: '开始时间', type: 'text', placeholder: '2025-01-01' },
-      { key: 'endDate', label: '结束时间', type: 'text', placeholder: '2025-01-02' },
-      { key: 'reason', label: '出差事由', type: 'textarea', placeholder: '请输入出差事由' },
-    ],
-  },
-  {
-    value: 'general',
-    label: '通用',
-    fields: [
-      { key: 'content', label: '申请内容', type: 'textarea', placeholder: '请输入申请内容' },
-    ],
-  },
-]
-
-const currentTemplate = computed(() => templates.find((t) => t.value === form.type) || templates[0])
+const templates = Object.values(APPROVAL_TEMPLATES)
+const currentTemplate = computed(
+  () => APPROVAL_TEMPLATES[form.type] || APPROVAL_TEMPLATES.expense,
+)
 
 const form = reactive({
-  type: 'expense',
+  type: 'expense' as string,
   title: '',
   content: {} as Record<string, any>,
-  approvers: [] as { userID: string; nickname: string; faceURL: string }[],
+  stepApprovers: [] as Array<{ userID: string; nickname: string; faceURL: string } | null>,
 })
 
 const showPicker = ref(false)
+const pickerStep = ref<number | null>(null)
 
-const selectTemplate = (t: Template) => {
-  form.type = t.value
-  form.content = {}
-  t.fields.forEach((f: any) => {
+const todayStr = () => {
+  const d = new Date()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${mm}-${dd}`
+}
+
+const initContent = (tplType: string) => {
+  const tpl = APPROVAL_TEMPLATES[tplType]
+  if (!tpl) return
+  const content: Record<string, any> = {}
+  tpl.fields.forEach((f) => {
     if (f.type === 'checkbox') {
-      form.content[f.key] = []
+      content[f.key] = []
     } else if (f.type === 'table') {
-      if (f.presetRows) {
-        form.content[f.key] = JSON.parse(JSON.stringify(f.presetRows))
-      } else {
-        form.content[f.key] = []
-      }
+      // 费用明细：初始保留一行空行
+      content[f.key] = []
+    } else if (f.autoFill) {
+      if (f.key === 'applyDate') content[f.key] = todayStr()
+      else if (f.key === 'name') content[f.key] = userStore.selfInfo?.nickname || ''
+      else if (f.key === 'employeeId') content[f.key] = userStore.selfInfo?.userID || ''
+    } else {
+      content[f.key] = ''
     }
   })
-  form.title = t.label
-}
-
-const addApprover = () => {
-  showPicker.value = true
-}
-
-const removeApprover = (idx: number) => {
-  form.approvers.splice(idx, 1)
-}
-
-const pickApprover = (friend: any) => {
-  if (form.approvers.some((a) => a.userID === friend.userID)) {
-    feedbackToast({ message: '该审批人已存在' })
-    return
+  // 支出费用明细至少一行
+  if (tplType === 'expense') {
+    content.items = [{ '预算编号': '', '项目': '', '部门': '', '摘要': '', '金额': '' }]
   }
-  form.approvers.push({
-    userID: friend.userID,
-    nickname: friend.nickname,
-    faceURL: friend.faceURL,
+  return content
+}
+
+const selectTemplate = (type: string) => {
+  form.type = type
+  form.content = initContent(type) || {}
+  form.title = APPROVAL_TEMPLATES[type].typeName
+}
+
+// 当前模板的可见字段
+const visibleFields = computed<TemplateField[]>(() => {
+  return currentTemplate.value.fields.filter((f) => {
+    if (f.visibleWhen) return f.visibleWhen(form.content)
+    return true
   })
-  showPicker.value = false
+})
+
+// 动态审批流程（含规则调整）
+const approvalSteps = computed(() => {
+  return getAdjustedSteps(form.type, form.content)
+})
+
+// 步骤变化时同步审批人槽位（按环节名对齐，避免动态规则导致审批人错位）
+watch(
+  () => approvalSteps.value.steps.map((s) => s.stepName),
+  (newStepNames, oldStepNames) => {
+    const oldApprovers = [...form.stepApprovers]
+    form.stepApprovers = newStepNames.map((name) => {
+      const oldIdx = oldStepNames?.indexOf(name)
+      if (oldIdx !== undefined && oldIdx > -1 && oldApprovers[oldIdx]) {
+        return oldApprovers[oldIdx]
+      }
+      return null
+    })
+  },
+  { immediate: true },
+)
+
+// 费用明细金额合计自动计算
+watch(
+  () => form.content.items,
+  (items) => {
+    const total = calcTableTotal(items || [], '金额')
+    form.content.totalAmount = total ? total.toFixed(2) : ''
+  },
+  { deep: true },
+)
+
+const isFieldRequired = (field: TemplateField) => {
+  if (field.required) return true
+  if (field.requiredWhen) return field.requiredWhen(form.content)
+  return false
 }
 
 const toggleCheckbox = (key: string, opt: string) => {
   const arr = (form.content[key] as string[]) || []
   const idx = arr.indexOf(opt)
-  if (idx > -1) {
-    arr.splice(idx, 1)
-  } else {
-    arr.push(opt)
-  }
+  if (idx > -1) arr.splice(idx, 1)
+  else arr.push(opt)
 }
 
 const addTableRow = (key: string, columns: string[]) => {
@@ -352,27 +347,64 @@ const removeTableRow = (key: string, idx: number) => {
   form.content[key].splice(idx, 1)
 }
 
+const openPicker = (idx: number) => {
+  pickerStep.value = idx
+  showPicker.value = true
+}
+
+const pickApprover = (friend: any) => {
+  if (pickerStep.value === null) return
+  const idx = pickerStep.value
+  // 同一人不能重复选择到其他环节
+  const duplicated = form.stepApprovers.some(
+    (a, i) => i !== idx && a && a.userID === friend.userID,
+  )
+  if (duplicated) {
+    feedbackToast({ message: '该审批人已被其他环节选择' })
+    return
+  }
+  form.stepApprovers[idx] = {
+    userID: friend.userID,
+    nickname: friend.nickname,
+    faceURL: friend.faceURL,
+  }
+  showPicker.value = false
+}
+
+const removeStepApprover = (idx: number) => {
+  form.stepApprovers[idx] = null
+}
+
 const canSubmit = computed(() => {
-  if (!form.title.trim() || form.approvers.length === 0) return false
-  const vals = Object.values(form.content)
-  return vals.some((v) => {
-    if (Array.isArray(v)) return v.length > 0
-    if (typeof v === 'string') return v.trim()
-    return false
-  })
+  if (!form.title.trim()) return false
+  // 必填字段校验
+  for (const field of visibleFields.value) {
+    if (!isFieldRequired(field)) continue
+    const val = form.content[field.key]
+    if (Array.isArray(val)) {
+      if (val.length === 0) return false
+    } else if (val === undefined || val === null || String(val).trim() === '') {
+      return false
+    }
+  }
+  return true
 })
 
 const submit = async () => {
+  const steps = approvalSteps.value.steps
+  const approvers = steps.map((_, idx) => form.stepApprovers[idx] || null)
   await approvalStore.createApproval({
     title: form.title,
     type: form.type,
     applicant: {
-      userID: userStore.selfInfo.userID,
-      nickname: userStore.selfInfo.nickname,
-      faceURL: userStore.selfInfo.faceURL,
+      userID: userStore.selfInfo?.userID || '',
+      nickname: userStore.selfInfo?.nickname || '',
+      faceURL: userStore.selfInfo?.faceURL || '',
     },
-    content: form.content,
-    approvers: form.approvers,
+    content: JSON.parse(JSON.stringify(form.content)),
+    approvers,
+    steps,
+    adjustments: approvalSteps.value.adjustments.map((a) => a.message),
   })
   feedbackToast({ message: '审批已提交' })
   router.back()
@@ -382,6 +414,6 @@ onMounted(() => {
   if (contactStore.storeFriendList.length === 0) {
     contactStore.getFriendListFromReq()
   }
-  selectTemplate(templates[0])
+  selectTemplate('expense')
 })
 </script>
