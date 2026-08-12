@@ -32,25 +32,35 @@ export interface ApprovalInstance {
   updateTime: number
 }
 
-const STORAGE_KEY = (uid: string) => `${uid}_approval_instances`
+const STORAGE_KEY = 'global_approval_instances'
 
 const loadInstances = (): ApprovalInstance[] => {
-  const uid = getIMUserID()
-  if (!uid) return []
-  const raw = localStorage.getItem(STORAGE_KEY(uid))
+  const raw = localStorage.getItem(STORAGE_KEY)
   return raw ? JSON.parse(raw) : []
 }
 
 const saveInstances = (list: ApprovalInstance[]) => {
-  const uid = getIMUserID()
-  if (!uid) return
-  localStorage.setItem(STORAGE_KEY(uid), JSON.stringify(list))
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
 }
 
-const sendApprovalNotification = async (recvID: string, text: string) => {
+import { CustomMessageType } from '@/constants/enum'
+
+const sendApprovalNotification = async (
+  recvID: string,
+  text: string,
+  instance: ApprovalInstance,
+) => {
   if (!recvID) return
   try {
-    const { data: message } = await IMSDK.createTextMessage(text)
+    const customData = JSON.stringify({
+      customType: CustomMessageType.ApprovalMessage,
+      data: {
+        text,
+        approvalId: instance.id,
+        instance,
+      },
+    })
+    const { data: message } = await IMSDK.createCustomMessage(customData, '', '')
     await IMSDK.sendMessage({ recvID, groupID: '', message: message as MessageItem })
   } catch (error) {
     console.error('send approval notification failed', error)
@@ -123,7 +133,8 @@ const useStore = defineStore('approval', {
       if (firstApprover) {
         await sendApprovalNotification(
           firstApprover.userID,
-          `您有一条新的审批待处理：《${payload.title}》，来自 ${payload.applicant.nickname}`
+          `您有一条新的审批待处理：《${payload.title}》，来自 ${payload.applicant.nickname}`,
+          instance,
         )
       }
 
@@ -162,7 +173,13 @@ const useStore = defineStore('approval', {
         })
         await sendApprovalNotification(
           payload.transferTo.userID,
-          `您有一条新的审批待处理：《${instance.title}》已被 ${approverNickname} 转交给您审批`
+          `您有一条新的审批待处理：《${instance.title}》已被 ${approverNickname} 转交给您审批`,
+          instance,
+        )
+        await sendApprovalNotification(
+          instance.applicant.userID,
+          `您的审批《${instance.title}》已被 ${approverNickname} 转交给 ${payload.transferTo.nickname}`,
+          instance,
         )
       }
 
@@ -170,20 +187,30 @@ const useStore = defineStore('approval', {
         instance.status = 'rejected'
         await sendApprovalNotification(
           instance.applicant.userID,
-          `您的审批《${instance.title}》已被 ${approverNickname} 驳回${payload.comment ? '，原因：' + payload.comment : ''}`
+          `您的审批《${instance.title}》已被 ${approverNickname} 驳回${payload.comment ? '，原因：' + payload.comment : ''}`,
+          instance,
         )
       } else if (payload.action === 'approved') {
         const nextNode = instance.nodes.find((n) => n.level === currentNode.level + 1)
         if (nextNode) {
+          // 通知下一级审批人
           await sendApprovalNotification(
             nextNode.approver.userID,
-            `您有一条新的审批待处理：《${instance.title}》，来自 ${instance.applicant.nickname}（第${nextNode.level}级审批）`
+            `您有一条新的审批待处理：《${instance.title}》，来自 ${instance.applicant.nickname}（第${nextNode.level}级审批）`,
+            instance,
+          )
+          // 同步最新状态给申请人
+          await sendApprovalNotification(
+            instance.applicant.userID,
+            `您的审批《${instance.title}》已通过第${currentNode.level}级审批（${approverNickname}），当前第${nextNode.level}级审批中`,
+            instance,
           )
         } else {
           instance.status = 'approved'
           await sendApprovalNotification(
             instance.applicant.userID,
-            `您的审批《${instance.title}》已通过全部审批`
+            `您的审批《${instance.title}》已通过全部审批`,
+            instance,
           )
         }
       }
@@ -194,6 +221,16 @@ const useStore = defineStore('approval', {
     },
     getApprovalById(id: string) {
       return this.instances.find((i) => i.id === id)
+    },
+    syncRemoteInstance(remoteInstance: ApprovalInstance) {
+      if (!remoteInstance || !remoteInstance.id) return
+      const idx = this.instances.findIndex((i) => i.id === remoteInstance.id)
+      if (idx !== -1) {
+        this.instances[idx] = remoteInstance
+      } else {
+        this.instances.unshift(remoteInstance)
+      }
+      this.syncStorage()
     },
     clearStore() {
       this.instances = []

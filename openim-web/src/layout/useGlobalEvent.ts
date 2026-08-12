@@ -1,6 +1,7 @@
 import useContactStore from '@store/modules/contact'
 import useConversationStore from '@store/modules/conversation'
 import useUserStore from '@store/modules/user'
+import useApprovalStore from '@store/modules/approval'
 import { conversationSort, IMSDK } from '@/utils/imCommon'
 import { CbEvents } from '@openim/wasm-client-sdk'
 import type {
@@ -24,7 +25,7 @@ import {
 import useMessageStore, { ExMessageItem } from '@/store/modules/message'
 import emitter from '@/utils/events'
 import { useThrottleFn } from '@vueuse/core'
-import { GroupSessionTypes } from '@/constants/enum'
+import { GroupSessionTypes, CustomMessageType } from '@/constants/enum'
 import {
   getAccessedFriendApplication,
   getAccessedGroupApplication,
@@ -40,6 +41,7 @@ export function useGlobalEvent() {
   const conversationStore = useConversationStore()
   const contactStore = useContactStore()
   const messageStore = useMessageStore()
+  const approvalStore = useApprovalStore()
 
   const { t } = useI18n()
   const router = useRouter()
@@ -161,6 +163,19 @@ export function useGlobalEvent() {
     handleNewMessage(parsedData)
   }
   const handleNewMessage = (newServerMsg: ExMessageItem) => {
+    // 审批消息同步：无论是否在当前会话，都需要同步到本地 store
+    if (newServerMsg.contentType === MessageType.CustomMessage) {
+      try {
+        const customData = JSON.parse(newServerMsg.customElem!.data)
+        if (customData.customType === CustomMessageType.ApprovalMessage) {
+          const instance = customData.data?.instance
+          if (instance) {
+            approvalStore.syncRemoteInstance(instance)
+          }
+        }
+      } catch {}
+    }
+
     if (inCurrentConversation(newServerMsg)) {
       if (newServerMsg.contentType === MessageType.CustomMessage) {
         const customData = JSON.parse(newServerMsg.customElem!.data)

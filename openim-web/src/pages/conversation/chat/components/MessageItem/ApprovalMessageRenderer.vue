@@ -33,7 +33,13 @@ const router = useRouter()
 
 const data = computed(() => {
   try {
-    return JSON.parse(props.message.customElem?.data || '{}').data || {}
+    const raw = JSON.parse(props.message.customElem?.data || '{}')
+    const msgData = raw.data || {}
+    // 兼容新旧格式：优先使用 instance 数据
+    if (msgData.instance) {
+      return msgData.instance
+    }
+    return msgData
   } catch {
     return {}
   }
