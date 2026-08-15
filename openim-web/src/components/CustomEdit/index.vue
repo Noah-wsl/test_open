@@ -1,12 +1,15 @@
 <template>
-  <div
-    ref="inputRef"
-    class="custom_rich_input"
-    :class="{ needsclick: !input }"
-    :placeholder="placeholder ?? $t('placeholder.typingMessage')"
-    :contenteditable="!disable"
-    @input="emitChange"
-  />
+  <div class="custom-edit-wrap">
+    <div class="resize-handle" @mousedown="startResize"></div>
+    <div
+      ref="inputRef"
+      class="custom_rich_input"
+      :class="{ needsclick: !input }"
+      :placeholder="placeholder ?? $t('placeholder.typingMessage')"
+      :contenteditable="!disable"
+      @input="emitChange"
+    />
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -85,6 +88,28 @@ const onSelectionChange = () => {
   }
 }
 
+// 输入框顶部边缘拖拽调整高度
+const startResize = (e: MouseEvent) => {
+  e.preventDefault()
+  const startY = e.clientY
+  const startHeight = inputRef.value?.offsetHeight ?? 32
+  const onMove = (ev: MouseEvent) => {
+    const delta = ev.clientY - startY
+    const height = Math.min(300, Math.max(32, startHeight + delta))
+    if (inputRef.value) {
+      inputRef.value.style.height = height + 'px'
+    }
+  }
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+    document.body.style.cursor = ''
+  }
+  document.body.style.cursor = 'ns-resize'
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
+
 onMounted(() => {
   document.addEventListener('selectionchange', onSelectionChange)
 })
@@ -102,6 +127,24 @@ defineExpose({
 </script>
 
 <style lang="scss" scoped>
+.custom-edit-wrap {
+  position: relative;
+}
+
+.resize-handle {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 10;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.06);
+  }
+}
+
 .custom_rich_input {
   position: relative;
   padding: 5px 8px;
@@ -116,7 +159,7 @@ defineExpose({
   -webkit-overflow-scrolling: touch;
   cursor: text;
   min-height: 32px;
-  max-height: 60px;
+  max-height: 300px;
   user-select: auto;
   // fix safari input
   -webkit-user-select: auto;
