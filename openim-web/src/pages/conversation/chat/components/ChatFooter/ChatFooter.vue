@@ -3,15 +3,25 @@
     <div v-if="getPlaceholder.length > 0" class="flex h-[54px] items-center justify-center bg-[#F0F2F6] border-t border-[var(--gap-text)]">
       <span class="text-sm text-[#8E9AB0]">{{ getPlaceholder }}</span>
     </div>
-    <div v-else id="chat_footer" class="flex items-center bg-[#F0F2F6] px-3 py-3 border-t border-[var(--gap-text)]">
-      <div class="flex-grow">
-        <CustomEdit class="bg-[#fff]" ref="inputRef"
-          @focus="onFocusUpdate(true)" @blur="onFocusUpdate(false)" v-model:input="messageContent"
-          :placeholder="$t('placeholder.pleaseInput')" @trigger-at="() => { }" />
+    <div v-else id="chat_footer" ref="footerEl" class="relative flex flex-col overflow-y-auto bg-[#F0F2F6] px-3 py-3 border-t border-[var(--gap-text)]">
+      <div class="resize-handle" @mousedown="startFooterResize"></div>
+      <div class="flex items-end">
+        <div class="flex-grow">
+          <CustomEdit class="bg-[#fff]" ref="inputRef"
+            @focus="onFocusUpdate(true)" @blur="onFocusUpdate(false)" v-model:input="messageContent"
+            :placeholder="$t('placeholder.pleaseInput')" @trigger-at="() => { }" />
+        </div>
+        <img v-show="!messageContent" @click="clickAddBtn" class="ml-3 h-[26px] min-w-[26px]" :src="add" alt="" />
+        <img v-show="messageContent" @click="switchTextMessage" class="ml-3 h-[26px] min-w-[26px]" :src="send"
+          alt="send" />
       </div>
-      <img v-show="!messageContent" @click="clickAddBtn" class="ml-3 h-[26px] min-w-[26px]" :src="add" alt="" />
-      <img v-show="messageContent" @click="switchTextMessage" class="ml-3 h-[26px] min-w-[26px]" :src="send"
-        alt="send" />
+      <div class="mt-2 flex items-center gap-4">
+        <van-icon name="smile-o" class="text-xl text-[#8E9AB0]" />
+        <van-icon name="folder-o" class="text-xl text-[#8E9AB0]" />
+        <van-icon name="scissors" class="text-xl text-[#8E9AB0]" />
+        <van-icon name="video-o" class="text-xl text-[#8E9AB0]" />
+        <van-icon name="phone-o" class="text-xl text-[#8E9AB0]" />
+      </div>
     </div>
     <ChatFooterAction v-show="showActionBar" @closeActionBar="closeActionBar" @getFile="getFile" @getScreenshotFile="getScreenshotFile" @startScreenshot="startScreenshot" />
     <ScreenshotEditor ref="screenshotEditorRef" @confirm="onScreenshotConfirm" @cancel="onScreenshotCancel" />
@@ -214,21 +224,70 @@ const getScreenshotFile = async (uploadData: UploaderFileListItem) => {
   await sendScreenshotFile(uploadData.file!)
 }
 
+// 背景容器顶部边缘拖拽调整高度
+const footerEl = ref<HTMLElement>()
+const startFooterResize = (e: MouseEvent) => {
+  e.preventDefault()
+  const startY = e.clientY
+  const startHeight = footerEl.value?.offsetHeight ?? 120
+  const onMove = (ev: MouseEvent) => {
+    const delta = ev.clientY - startY
+    const height = Math.max(100, startHeight + delta)
+    if (footerEl.value) {
+      footerEl.value.style.height = height + 'px'
+    }
+  }
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+    document.body.style.cursor = ''
+  }
+  document.body.style.cursor = 'ns-resize'
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
+
 onMounted(() => {
   if (!inputRef.value) return
-  inputRef.value.inputRef.focus()
+  inputRef.value.inputRef?.focus()
 })
 
 onActivated(() => {
   if (!inputRef.value) return
   resetState()
   inputRef.value.clear()
-  inputRef.value.inputRef.focus()
+  inputRef.value.inputRef?.focus()
 })
 </script>
 
 <style lang="scss" scoped>
 :deep(.van-button__content) {
   width: max-content;
+}
+
+.resize-handle {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: ns-resize;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &::before {
+    content: '';
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(0, 0, 0, 0.15);
+    transition: background 0.2s;
+  }
+
+  &:hover::before {
+    background: rgba(0, 0, 0, 0.35);
+  }
 }
 </style>

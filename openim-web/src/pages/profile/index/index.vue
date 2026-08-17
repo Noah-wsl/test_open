@@ -1,30 +1,31 @@
 <template>
   <div class="page_container">
-    <img :src="bg" mode="" />
+    <img :src="bg" mode="" class="w-full" />
 
-    <view
-      class="mx-auto mt-[-60px] flex h-[98px] w-[90%] items-center rounded-md bg-white pl-4 pr-2"
-    >
-      <Avatar
-        :size="46"
-        :src="userStore.storeSelfInfo.faceURL"
-        :desc="userStore.storeSelfInfo.nickname"
-      />
-
+    <div class="mx-auto w-[90%] max-w-[560px]">
       <view
-        class="id_row ml-2 flex h-[46px] flex-1 flex-col items-start justify-between"
+        class="mt-[-180px] flex h-[98px] items-center rounded-md bg-white pl-4 pr-2"
       >
-        <text class="nickname">{{ userStore.storeSelfInfo.nickname }}</text>
-        <view class="flex items-center" @click="copyUserID">
-          <text class="text-sm text-sub-text">{{
-            userStore.storeSelfInfo.userID
-          }}</text>
-          <img style="width: 16px; height: 16px" :src="copy_icon" mode="" />
+        <Avatar
+          :size="46"
+          :src="userStore.storeSelfInfo.faceURL"
+          :desc="userStore.storeSelfInfo.nickname"
+        />
+
+        <view
+          class="id_row ml-2 flex h-[46px] flex-1 flex-col items-start justify-between"
+        >
+          <text class="nickname">{{ userStore.storeSelfInfo.nickname }}</text>
+          <view class="flex items-center" @click="copyUserID">
+            <text class="text-sm text-sub-text">{{
+              userStore.storeSelfInfo.userID
+            }}</text>
+            <img style="width: 16px; height: 16px" :src="copy_icon" mode="" />
+          </view>
         </view>
       </view>
-    </view>
 
-    <div class="mx-auto mt-[10px] w-[90%] rounded-md bg-white">
+      <div class="mt-[10px] rounded-md bg-white">
       <div
         v-for="(menu, idx) in profileMenus"
         :key="idx"
@@ -37,6 +38,7 @@
         </div>
         <img :src="back" width="24" alt="back" />
       </div>
+    </div>
     </div>
   </div>
 </template>

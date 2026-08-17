@@ -9,5 +9,5 @@ export default {
   API_URL,
   WS_URL,
   LOG_LEVEL: 5,
-  VERSION: 'H5-Demo',
+  VERSION: 'openim',
 }
