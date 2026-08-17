@@ -104,6 +104,13 @@
         </div>
       </div>
 
+      <!-- Download PDF -->
+      <div v-if="canDownload" class="px-4 py-4 border-t border-[#f5f5f5]">
+        <van-button type="success" block round plain :loading="downloading" @click="handleDownloadPdf">
+          下载 PDF
+        </van-button>
+      </div>
+
       <!-- Withdraw -->
       <div v-if="canWithdraw" class="px-4 py-4 border-t border-[#f5f5f5]">
         <van-button type="warning" block round plain @click="handleWithdraw">
@@ -137,9 +144,10 @@
 import Avatar from '@/components/Avatar/index.vue'
 import useApprovalStore from '@/store/modules/approval'
 import useUserStore from '@/store/modules/user'
+import dayjs from 'dayjs'
 import { APPROVAL_TEMPLATES } from '@/utils/approvalTemplate'
+import { exportApprovalToPdf } from '@/utils/exportPdf'
 import { feedbackToast } from '@/utils/common'
-import { formatMessageTime } from '@/utils/imCommon'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -167,6 +175,27 @@ const canWithdraw = computed(() => {
   if (!instance.value || instance.value.status !== 'pending') return false
   return instance.value.applicant.userID === userStore.selfInfo.userID
 })
+
+// 审批完成后可下载 PDF
+const canDownload = computed(() => {
+  return instance.value?.status === 'approved'
+})
+
+const downloading = ref(false)
+
+const handleDownloadPdf = async () => {
+  if (!instance.value || downloading.value) return
+  downloading.value = true
+  try {
+    await exportApprovalToPdf(instance.value)
+    feedbackToast({ message: 'PDF 已导出' })
+  } catch (e) {
+    console.error('PDF 导出失败', e)
+    feedbackToast({ error: 'PDF 导出失败' })
+  } finally {
+    downloading.value = false
+  }
+}
 
 // 内容字段中文标签
 const contentLabel = (key: string) => {
@@ -208,7 +237,8 @@ const dotClass = (status: string) => {
   return map[status] || 'bg-[#d9d9d9]'
 }
 
-const formatTime = (ts: number) => formatMessageTime(ts)
+// 完整时间：2026年08月17日 14:30:25
+const formatTime = (ts?: number) => (ts ? dayjs(ts).format('YYYY年MM月DD日 HH:mm:ss') : '')
 
 const handleWithdraw = async () => {
   if (!instance.value) return

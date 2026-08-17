@@ -296,11 +296,16 @@ const useStore = defineStore('approval', {
       if (!isRelated) return
       const idx = this.instances.findIndex((i) => i.id === remoteInstance.id)
       if (idx !== -1) {
-        this.instances[idx] = remoteInstance
+        const local = this.instances[idx]
+        // 只接受更新的快照，避免会话历史里的旧消息把已处理的状态回滚
+        if ((remoteInstance.updateTime ?? 0) >= (local.updateTime ?? 0)) {
+          this.instances[idx] = remoteInstance
+          this.syncStorage()
+        }
       } else {
         this.instances.unshift(remoteInstance)
+        this.syncStorage()
       }
-      this.syncStorage()
     },
     clearStore() {
       this.instances = []

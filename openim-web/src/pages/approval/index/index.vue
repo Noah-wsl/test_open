@@ -63,9 +63,10 @@
 <script setup lang="ts">
 import Avatar from '@/components/Avatar/index.vue'
 import useApprovalStore from '@/store/modules/approval'
+import dayjs from 'dayjs'
 import useConversationStore from '@/store/modules/conversation'
 import { APPROVAL_TEMPLATES } from '@/utils/approvalTemplate'
-import { formatMessageTime, IMSDK } from '@/utils/imCommon'
+import { IMSDK } from '@/utils/imCommon'
 import { MessageType, ViewType } from '@openim/wasm-client-sdk'
 import { CustomMessageType } from '@/constants/enum'
 
@@ -150,7 +151,8 @@ const statusClass = (status: string) => {
   return map[status] || ''
 }
 
-const formatTime = (ts: number) => formatMessageTime(ts)
+// 完整时间：2026年08月17日 14:30
+const formatTime = (ts: number) => (ts ? dayjs(ts).format('YYYY年MM月DD日 HH:mm') : '')
 
 const toDetail = (id: string) => {
   router.push({ path: '/approval/detail', query: { id } })
