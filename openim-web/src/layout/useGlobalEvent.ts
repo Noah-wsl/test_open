@@ -178,8 +178,11 @@ export function useGlobalEvent() {
 
     if (inCurrentConversation(newServerMsg)) {
       if (newServerMsg.contentType === MessageType.CustomMessage) {
-        const customData = JSON.parse(newServerMsg.customElem!.data)
-        if (200 <= customData.customType && customData.customType <= 204) {
+        let customData: { customType?: number } = {}
+        try {
+          customData = JSON.parse(newServerMsg.customElem?.data || '{}')
+        } catch {}
+        if (200 <= customData.customType! && customData.customType! <= 204) {
           return
         }
       }

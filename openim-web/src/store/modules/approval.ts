@@ -187,6 +187,9 @@ const useStore = defineStore('approval', {
       currentNode.status = payload.action
       currentNode.comment = payload.comment || ''
       currentNode.time = Date.now()
+      // 必须在发送通知之前更新，确保通知消息里的快照携带最新时间戳，
+      // 否则多级审批的消息乱序到达时，旧快照会覆盖新状态
+      instance.updateTime = Date.now()
 
       const approverNickname = currentNode.approver?.nickname || '审批人'
 
@@ -248,7 +251,6 @@ const useStore = defineStore('approval', {
         }
       }
 
-      instance.updateTime = Date.now()
       this.syncStorage()
       return true
     },

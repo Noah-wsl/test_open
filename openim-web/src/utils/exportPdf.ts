@@ -163,7 +163,7 @@ export const exportApprovalToPdf = async (instance: ApprovalInstance) => {
     }
 
     const safeTitle = (instance.title || '审批单').replace(/[\\/:*?"<>|]/g, '_')
-    const dateStr = new Date(instance.createTime).toISOString().slice(0, 10)
+    const dateStr = dayjs(instance.createTime).format('YYYY-MM-DD')
     pdf.save(`审批单_${safeTitle}_${dateStr}.pdf`)
   } finally {
     container.remove()
