@@ -15,6 +15,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { FileElem } from '@openim/wasm-client-sdk/lib/types/entity'
 import { ExedMessageItem } from './data'
 
 interface Props {
@@ -25,7 +26,7 @@ interface Props {
 
 const props = defineProps<Props>()
 
-const fileElem = computed(() => props.message.fileElem || {})
+const fileElem = computed<Partial<FileElem>>(() => props.message.fileElem || {})
 const fileName = computed(() => fileElem.value.fileName || '未知文件')
 const fileSize = computed(() => fileElem.value.fileSize || 0)
 const fileUrl = computed(() => fileElem.value.sourceUrl || fileElem.value.filePath || '')
