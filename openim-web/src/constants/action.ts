@@ -9,4 +9,5 @@ export enum ChatFooterActionType {
   VoiceCall,
   VideoCall,
   Screenshot,
+  File,
 }

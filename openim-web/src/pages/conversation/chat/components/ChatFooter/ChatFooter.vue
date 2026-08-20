@@ -3,24 +3,43 @@
     <div v-if="getPlaceholder.length > 0" class="flex h-[54px] items-center justify-center bg-[#F0F2F6] border-t border-[var(--gap-text)]">
       <span class="text-sm text-[#8E9AB0]">{{ getPlaceholder }}</span>
     </div>
-    <div v-else id="chat_footer" ref="footerEl" class="relative flex flex-col overflow-y-auto bg-[#F0F2F6] px-3 py-3 border-t border-[var(--gap-text)]">
+    <div v-else id="chat_footer" ref="footerEl" class="chat-input-wrapper">
       <div class="resize-handle" @mousedown="startFooterResize"></div>
-      <div class="flex items-end">
-        <div class="flex-grow">
-          <CustomEdit class="bg-[#fff]" ref="inputRef"
-            @focus="onFocusUpdate(true)" @blur="onFocusUpdate(false)" v-model:input="messageContent"
-            :placeholder="$t('placeholder.pleaseInput')" @trigger-at="() => { }" />
-        </div>
-        <img v-show="!messageContent" @click="clickAddBtn" class="ml-3 h-[26px] min-w-[26px]" :src="add" alt="" />
-        <img v-show="messageContent" @click="switchTextMessage" class="ml-3 h-[26px] min-w-[26px]" :src="send"
-          alt="send" />
+      <div
+        class="icon-btn voice-btn"
+        :class="{ recording: isRecording }"
+        @mousedown.prevent="startRecord"
+        @mouseup="stopRecord"
+        @mouseleave="stopRecord"
+        @touchstart.prevent="startRecord"
+        @touchend="stopRecord"
+        @touchcancel="stopRecord"
+      >
+        <van-icon name="mic" size="20" />
       </div>
-      <div class="mt-2 flex items-center gap-4">
-        <van-icon name="smile-o" class="text-xl text-[#8E9AB0]" />
-        <van-icon name="folder-o" class="text-xl text-[#8E9AB0]" />
-        <van-icon name="scissors" class="text-xl text-[#8E9AB0]" />
-        <van-icon name="video-o" class="text-xl text-[#8E9AB0]" />
-        <van-icon name="phone-o" class="text-xl text-[#8E9AB0]" />
+      <div class="flex-1 px-3">
+        <CustomEdit ref="inputRef" @focus="onFocusUpdate(true)" @blur="onFocusUpdate(false)"
+          v-model:input="messageContent" placeholder="请输入消息..." @send="switchTextMessage"
+          @trigger-at="() => { }" />
+      </div>
+      <div class="right-actions">
+        <div class="icon-btn" :class="{ active: showEmojiBar }" @click="clickEmojiBtn">
+          <van-icon name="smile-o" size="20" />
+        </div>
+        <div class="icon-btn" :class="{ active: showActionBar }" @click="clickAddBtn">
+          <van-icon name="plus" size="20" />
+        </div>
+        <button class="send-btn" :disabled="!messageContent" @click="switchTextMessage">发送</button>
+      </div>
+    </div>
+    <div v-show="showEmojiBar" class="emoji-bar">
+      <div class="emoji-list">
+        <span
+          v-for="emoji in emojiList"
+          :key="emoji"
+          class="emoji-item"
+          @click="insertEmoji(emoji)"
+        >{{ emoji }}</span>
       </div>
     </div>
     <ChatFooterAction v-show="showActionBar" @closeActionBar="closeActionBar" @getFile="getFile" @getScreenshotFile="getScreenshotFile" @startScreenshot="startScreenshot" />
@@ -29,12 +48,10 @@
 </template>
 
 <script setup lang="ts">
-import add from '@/assets/images/chatFooter/add.png'
-import send from '@/assets/images/chatFooter/send.png'
-
 import CustomEdit from '@/components/CustomEdit/index.vue'
 import ChatFooterAction from './ChatFooterAction.vue'
 import ScreenshotEditor from '../ScreenshotEditor/index.vue'
+import { onBeforeUnmount } from 'vue'
 import { onLongPress, useThrottleFn } from '@vueuse/core'
 import {
   GroupMemberRole,
@@ -125,7 +142,18 @@ const switchTextMessage = async () => {
 const resetState = () => {
   messageContent.value = ''
   inputRef.value.clear()
+  // 发送后恢复自动高度
+  if (footerEl.value) {
+    footerEl.value.style.height = ''
+  }
 }
+
+watch(messageContent, () => {
+  // 输入内容变化时清除拖拽产生的固定高度，允许输入框自动撑开
+  if (footerEl.value) {
+    footerEl.value.style.height = ''
+  }
+})
 
 
 // action bar
@@ -136,10 +164,26 @@ const closeActionBar = () => {
   showActionBar.value = false
 }
 const clickAddBtn = () => {
-  if (showEmojiBar.value) {
-    showEmojiBar.value = false
-  }
+  showEmojiBar.value = false
   showActionBar.value = !showActionBar.value
+}
+const clickEmojiBtn = () => {
+  showActionBar.value = false
+  showEmojiBar.value = !showEmojiBar.value
+}
+
+const emojiList = [
+  '😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇',
+  '🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚',
+  '😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🥸',
+  '🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️',
+  '👍','👎','👏','🙌','🤝','🙏','✌️','🤞','🤟','🤘',
+  '❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💖',
+]
+
+const insertEmoji = (emoji: string) => {
+  inputRef.value?.inputRef?.focus()
+  inputRef.value?.insertAtCursor([document.createTextNode(emoji)])
 }
 
 const getFile = async (uploadData: UploaderFileListItem) => {
@@ -147,18 +191,84 @@ const getFile = async (uploadData: UploaderFileListItem) => {
   if (uploadData.file?.type.includes('image')) {
     messageType = MessageType.PictureMessage
   }
-  const { error, message } = await createFileMessage(
-    uploadData.file!,
-    messageType,
-  )
-  if (error || !message) {
-    feedbackToast({ error, message: error })
-    return
+  try {
+    const { error, message } = await createFileMessage(
+      uploadData.file!,
+      messageType,
+    )
+    if (error || !message) {
+      console.error('[createFileMessage failed]', error, message)
+      feedbackToast({ error, message: error || '创建文件消息失败' })
+      return
+    }
+    sendMessage({ message })
+  } catch (err) {
+    console.error('[getFile exception]', err)
+    feedbackToast({ error: String(err) })
   }
-  sendMessage({
-    message,
-  })
 }
+
+// 语音消息（按住说话）
+const isRecording = ref(false)
+let mediaRecorder: MediaRecorder | null = null
+let audioStream: MediaStream | null = null
+let audioChunks: Blob[] = []
+let recordStartTime = 0
+
+const startRecord = async () => {
+  if (isRecording.value || messageContent.value) return
+  try {
+    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    mediaRecorder = new MediaRecorder(audioStream)
+    audioChunks = []
+    recordStartTime = Date.now()
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunks.push(e.data)
+    }
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(audioChunks, {
+        type: mediaRecorder?.mimeType || 'audio/webm',
+      })
+      const duration = Math.max(1, Math.round((Date.now() - recordStartTime) / 1000))
+      const file = new File([blob], `voice_${Date.now()}.webm`, { type: blob.type })
+      try {
+        const { data: message } = await IMSDK.createSoundMessageByFile({
+          uuid: uuidV4(),
+          soundPath: '',
+          sourceUrl: '',
+          dataSize: blob.size,
+          duration,
+          soundType: blob.type,
+          file,
+        })
+        if (message) {
+          sendMessage({ message })
+        }
+      } catch (e) {
+        feedbackToast({ error: '发送语音失败' })
+      }
+      audioStream?.getTracks().forEach((t) => t.stop())
+      audioStream = null
+    }
+    mediaRecorder.start()
+    isRecording.value = true
+  } catch (e) {
+    feedbackToast({ error: '无法访问麦克风' })
+  }
+}
+
+const stopRecord = () => {
+  if (!isRecording.value || !mediaRecorder) return
+  mediaRecorder.stop()
+  isRecording.value = false
+}
+
+onBeforeUnmount(() => {
+  if (mediaRecorder && isRecording.value) {
+    mediaRecorder.stop()
+  }
+  audioStream?.getTracks().forEach((t) => t.stop())
+})
 
 const screenshotEditorRef = ref<InstanceType<typeof ScreenshotEditor>>()
 
@@ -232,7 +342,8 @@ const startFooterResize = (e: MouseEvent) => {
   const startHeight = footerEl.value?.offsetHeight ?? 120
   const onMove = (ev: MouseEvent) => {
     const delta = ev.clientY - startY
-    const height = Math.max(100, startHeight + delta)
+    // 手柄位于顶部：往上拉（delta<0）扩大，往下拉（delta>0）缩小
+    const height = Math.min(240, Math.max(100, startHeight - delta))
     if (footerEl.value) {
       footerEl.value.style.height = height + 'px'
     }
@@ -261,7 +372,133 @@ onActivated(() => {
 </script>
 
 <style lang="scss" scoped>
-:deep(.van-button__content) {
+.chat-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  background-color: #ffffff;
+  border-top: 1px solid #f0f0f0;
+
+  .flex-1 {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    min-height: 48px;
+
+    .custom-edit-wrap {
+      width: 100%;
+    }
+  }
+}
+
+.right-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  cursor: pointer;
+  color: #666;
+  font-size: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: all 0.2s;
+
+  &:hover {
+    background-color: #f0f2f5;
+  }
+
+  &.active {
+    color: #1890ff;
+    background-color: rgba(24, 144, 255, 0.1);
+  }
+
+  &.recording {
+    background-color: #ff4d4f;
+    color: #fff;
+    animation: voice-pulse 1.2s ease-in-out infinite;
+  }
+}
+
+@keyframes voice-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.45);
+  }
+
+  50% {
+    box-shadow: 0 0 0 8px rgba(255, 77, 79, 0);
+  }
+}
+
+.send-btn {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 18px;
+  margin-left: 0;
+  border: none;
+  border-radius: 16px;
+  background-color: #1890ff;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover:not(:disabled) {
+    background-color: #40a9ff;
+  }
+
+  &:active:not(:disabled) {
+    background-color: #096dd9;
+  }
+
+  &:disabled {
+    background-color: #bfbfbf;
+    cursor: not-allowed;
+  }
+}
+
+.emoji-bar {
+  padding: 12px 16px;
+  background-color: #f7f8fa;
+  border-top: 1px solid #f0f0f0;
+
+  .emoji-list {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 8px;
+    max-height: 160px;
+    overflow-y: auto;
+  }
+
+  .emoji-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    font-size: 22px;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.2s;
+
+    &:hover {
+      background-color: #e5e6e8;
+    }
+  }
+}
+
+::deep(.van-button__content) {
   width: max-content;
 }
 

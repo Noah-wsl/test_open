@@ -22,6 +22,14 @@
     />
     <van-uploader
       v-show="false"
+      ref="fileUploaderRef"
+      :accept="'*'"
+      :preview-image="false"
+      max-count="1"
+      :after-read="afterReadFile"
+    />
+    <van-uploader
+      v-show="false"
       ref="cameraUploaderRef"
       accept="image/*"
       capture="environment"
@@ -44,6 +52,7 @@
 import image from '@/assets/images/chatFooter/image.png'
 import call from '@/assets/images/chatFooter/call.png'
 import camera from '@/assets/images/chatFooter/camera.png'
+import fileIcon from '@/assets/images/chatFooter/file.png'
 
 import { onClickOutside } from '@vueuse/core'
 import { ActionSheetAction, UploaderFileListItem, UploaderInstance } from 'vant'
@@ -79,6 +88,11 @@ const actionList = computed(() => {
       text: t('footerAction.album'),
       icon: image,
       type: ChatFooterActionType.Album,
+    },
+    {
+      text: t('footerAction.file'),
+      icon: fileIcon,
+      type: ChatFooterActionType.File,
     },
     {
       text: t('footerAction.screenshot'),
@@ -129,6 +143,7 @@ const uploadChooseOptions = reactive({
 const target = ref(null)
 const uploaderRef = ref<UploaderInstance>()
 const cameraUploaderRef = ref<UploaderInstance>()
+const fileUploaderRef = ref<UploaderInstance>()
 
 onClickOutside(target, () => emit('closeActionBar'), {
   ignore: ['.van-overlay', '.van-action-sheet__content'],
@@ -165,6 +180,9 @@ const clickAction = ({ type }: ChatFooterActionItem) => {
     case ChatFooterActionType.VideoCall:
       actionSheetActions.value = [...videoCallActions]
       actionSheetVisible.value = true
+      break
+    case ChatFooterActionType.File:
+      nextTick(() => fileUploaderRef.value?.chooseFile())
       break
     default:
       break

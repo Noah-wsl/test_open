@@ -41,6 +41,8 @@ import TextMessageRenderer from './TextMessageRenderer.vue'
 import MediaMessageRenderer from './MediaMessageRenderer.vue'
 import ScreenshotMessageRenderer from './ScreenshotMessageRenderer.vue'
 import ApprovalMessageRenderer from './ApprovalMessageRenderer.vue'
+import SoundMessageRenderer from './SoundMessageRenderer.vue'
+import FileMessageRenderer from './FileMessageRenderer.vue'
 import CatchMsgRenderer from './CatchMsgRenderer.vue'
 import { MessageType, SessionType } from '@openim/wasm-client-sdk'
 import { CustomMessageType } from '@/constants/enum'
@@ -77,6 +79,10 @@ const getRenderComp = computed(() => {
       return TextMessageRenderer
     case MessageType.PictureMessage:
       return MediaMessageRenderer
+    case MessageType.VoiceMessage:
+      return SoundMessageRenderer
+    case MessageType.FileMessage:
+      return FileMessageRenderer
     case MessageType.CustomMessage:
       return getCustomMsgRender()
     default:

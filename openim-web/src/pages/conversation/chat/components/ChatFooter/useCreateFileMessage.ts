@@ -37,11 +37,29 @@ export default function useCreateFileMessage() {
     return (await IMSDK.createImageMessageByFile(options)).data
   }
 
+  const getNormalFileMessage = async (file: File): Promise<MessageItem> => {
+    const options = {
+      filePath: '',
+      fileName: file.name,
+      uuid: uuidV4(),
+      sourceUrl: '',
+      fileSize: file.size,
+      fileType: file.type,
+      file,
+    }
+    return (await IMSDK.createFileMessageByFile(options)).data
+  }
+
   const createFileMessage = async (file: File, messageType: MessageType) => {
     switch (messageType) {
       case MessageType.PictureMessage:
         return {
           message: await getImageMessage(file),
+          buffer: await getFileData(file),
+        }
+      case MessageType.FileMessage:
+        return {
+          message: await getNormalFileMessage(file),
           buffer: await getFileData(file),
         }
       default:

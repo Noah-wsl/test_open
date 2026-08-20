@@ -15,6 +15,7 @@ export default function useCreateNomalMessage({
   const getCleanTextWithBr = () => {
     let text = messageContent.value
     text = text.replace(/<div>/g, '\n').replace(/<\/div>/g, '')
+    text = text.replace(/<br\s*\/?>/gi, '\n')
     return getCleanText(text)
   }
 
