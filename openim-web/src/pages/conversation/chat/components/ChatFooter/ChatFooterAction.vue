@@ -163,7 +163,6 @@ const onActionSelect = ({ type }: any, idx: number) => {
 }
 
 const clickAction = ({ type }: ChatFooterActionItem) => {
-  console.log(type)
   switch (type) {
     case ChatFooterActionType.Album:
       actionSheetActions.value = [...albumActions]

@@ -5,18 +5,6 @@ import { IMSDK } from '@/utils/imCommon'
 import type { MessageItem } from '@openim/wasm-client-sdk/lib/types/entity'
 
 export default function useCreateFileMessage() {
-  const { t } = useI18n()
-
-  const getFileData = (data: Blob): Promise<ArrayBuffer> => {
-    return new Promise((resolve, reject) => {
-      let reader = new FileReader()
-      reader.onload = function () {
-        resolve(reader.result as ArrayBuffer)
-      }
-      reader.readAsArrayBuffer(data)
-    })
-  }
-
   const getImageMessage = async (file: File): Promise<MessageItem> => {
     const { width, height } = await getPicInfo(file)
     const baseInfo = {
@@ -55,12 +43,10 @@ export default function useCreateFileMessage() {
       case MessageType.PictureMessage:
         return {
           message: await getImageMessage(file),
-          buffer: await getFileData(file),
         }
       case MessageType.FileMessage:
         return {
           message: await getNormalFileMessage(file),
-          buffer: await getFileData(file),
         }
       default:
         return {

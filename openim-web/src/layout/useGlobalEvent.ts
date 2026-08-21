@@ -14,18 +14,12 @@ import type {
   BlackUserItem,
   GroupItem,
   FriendUserItem,
-  RevokedInfo,
   SelfUserInfo,
 } from '@openim/wasm-client-sdk/lib/types/entity'
-import {
-  MessageType,
-  MessageReceiveOptType,
-  SessionType,
-} from '@openim/wasm-client-sdk'
+import { MessageType, SessionType } from '@openim/wasm-client-sdk'
 import useMessageStore, { ExMessageItem } from '@/store/modules/message'
 import emitter from '@/utils/events'
-import { useThrottleFn } from '@vueuse/core'
-import { GroupSessionTypes, CustomMessageType } from '@/constants/enum'
+import { CustomMessageType } from '@/constants/enum'
 import {
   getAccessedFriendApplication,
   getAccessedGroupApplication,
@@ -34,7 +28,6 @@ import { ToastWrapperInstance } from 'vant/lib/toast/types'
 import { feedbackToast } from '@/utils/common'
 
 import messageRing from '@assets/audio/newMsg.mp3'
-import { BusinessAllowType } from '@/api/data'
 
 export function useGlobalEvent() {
   const userStore = useUserStore()
@@ -46,9 +39,16 @@ export function useGlobalEvent() {
   const { t } = useI18n()
   const router = useRouter()
 
-  let cacheConversationList = [] as ConversationItem[]
   let syncToast: ToastWrapperInstance | null = null
   let audioEl: HTMLAudioElement | null = null
+  let titleTimer: ReturnType<typeof setInterval> | null = null
+  const originalTitle = document.title
+  let unreadMsgCount = 0
+
+  let originalFaviconHref = ''
+  let faviconImg: HTMLImageElement | null = null
+  let faviconCanvas: HTMLCanvasElement | null = null
+  let faviconCtx: CanvasRenderingContext2D | null = null
 
   const setIMListener = () => {
     // account
@@ -195,6 +195,172 @@ export function useGlobalEvent() {
         emitter.emit('CHAT_MAIN_SCROLL_TO_BOTTOM', true)
       }
     }
+
+    // 非当前会话或窗口失焦时，提示用户
+    const isSelf = newServerMsg.sendID === userStore.storeSelfInfo.userID
+    if (
+      !isSelf &&
+      newServerMsg.contentType !== MessageType.TypingMessage &&
+      newServerMsg.contentType !== MessageType.RevokeMessage
+    ) {
+      notifyNewMessage(newServerMsg)
+    }
+  }
+
+  const notifyNewMessage = (message: ExMessageItem) => {
+    const isVisible = document.visibilityState === 'visible'
+    const inCurrent = inCurrentConversation(message)
+
+    // 在当前会话且窗口可见时，不闪烁标题、不弹桌面通知，只播放轻微提示音
+    if (inCurrent && isVisible) {
+      playMessageRing()
+      return
+    }
+
+    // 增加未读计数并闪烁标题
+    unreadMsgCount++
+    flashTitle()
+
+    // 播放提示音
+    playMessageRing()
+
+    // 桌面通知
+    showDesktopNotification(message)
+  }
+
+  const playMessageRing = () => {
+    if (!audioEl) {
+      audioEl = new Audio(messageRing)
+      audioEl.volume = 0.6
+    }
+    audioEl.currentTime = 0
+    audioEl.play().catch(() => {
+      // 浏览器自动播放策略限制，忽略错误
+    })
+  }
+
+  const loadOriginalFavicon = () => {
+    const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null
+    originalFaviconHref = link?.href || '/favicon.ico'
+    faviconImg = new Image()
+    faviconImg.crossOrigin = 'anonymous'
+    faviconImg.onload = () => {
+      // 图片加载完成后，若已有未读消息则立即绘制徽章（避免消息先于 favicon 加载而丢失）
+      if (unreadMsgCount > 0) updateFaviconBadge(unreadMsgCount)
+    }
+    faviconImg.src = originalFaviconHref
+  }
+
+  const updateFaviconBadge = (count: number) => {
+    if (!faviconImg || !faviconImg.complete || faviconImg.naturalWidth === 0) return
+    if (!faviconCanvas) {
+      faviconCanvas = document.createElement('canvas')
+      faviconCanvas.width = 32
+      faviconCanvas.height = 32
+      faviconCtx = faviconCanvas.getContext('2d')
+    }
+    if (!faviconCtx) return
+
+    faviconCtx.clearRect(0, 0, 32, 32)
+    faviconCtx.drawImage(faviconImg, 0, 0, 32, 32)
+
+    if (count > 0) {
+      const badge = count > 99 ? '99+' : String(count)
+      const radius = count > 99 ? 9 : 8
+      const cx = 32 - radius - 1
+      const cy = radius + 1
+      faviconCtx.beginPath()
+      faviconCtx.arc(cx, cy, radius, 0, Math.PI * 2)
+      faviconCtx.fillStyle = '#ff4d4f'
+      faviconCtx.fill()
+
+      faviconCtx.fillStyle = '#fff'
+      faviconCtx.font = badge.length > 2 ? '9px Arial' : '11px Arial'
+      faviconCtx.textAlign = 'center'
+      faviconCtx.textBaseline = 'middle'
+      faviconCtx.fillText(badge, cx, cy + 1)
+    }
+
+    const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null
+    const dataUrl = faviconCanvas.toDataURL('image/png')
+    if (link) {
+      link.href = dataUrl
+    } else {
+      const newLink = document.createElement('link')
+      newLink.rel = 'icon'
+      newLink.href = dataUrl
+      document.head.appendChild(newLink)
+    }
+  }
+
+  const restoreOriginalFavicon = () => {
+    const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null
+    if (link) link.href = originalFaviconHref
+  }
+
+  const flashTitle = () => {
+    updateFaviconBadge(unreadMsgCount)
+    if (titleTimer) return
+    titleTimer = setInterval(() => {
+      document.title =
+        document.title === originalTitle
+          ? `[${unreadMsgCount}条新消息] ${originalTitle}`
+          : originalTitle
+    }, 1000)
+  }
+
+  const clearFlashTitle = () => {
+    if (titleTimer) {
+      clearInterval(titleTimer)
+      titleTimer = null
+    }
+    document.title = originalTitle
+    unreadMsgCount = 0
+    restoreOriginalFavicon()
+  }
+
+  const showDesktopNotification = (message: ExMessageItem) => {
+    if (!('Notification' in window)) return
+    if (Notification.permission === 'granted') {
+      createNotification(message)
+    } else if (Notification.permission !== 'denied') {
+      Notification.requestPermission().then((permission) => {
+        if (permission === 'granted') createNotification(message)
+      })
+    }
+  }
+
+  const createNotification = (message: ExMessageItem) => {
+    const title = message.senderNickname || '新消息'
+    const body = getMessageAbstract(message)
+    new Notification(title, {
+      body,
+      icon: message.senderFaceUrl || '/favicon.ico',
+      tag: message.clientMsgID,
+    })
+  }
+
+  const getMessageAbstract = (message: ExMessageItem) => {
+    switch (message.contentType) {
+      case MessageType.TextMessage:
+        return message.textElem?.content || ''
+      case MessageType.PictureMessage:
+        return '[图片]'
+      case MessageType.VoiceMessage:
+        return '[语音]'
+      case MessageType.VideoMessage:
+        return '[视频]'
+      case MessageType.FileMessage:
+        return `[文件] ${message.fileElem?.fileName || ''}`
+      case MessageType.CustomMessage:
+        return '[自定义消息]'
+      default:
+        return '[新消息]'
+    }
+  }
+
+  const onWindowFocus = () => {
+    clearFlashTitle()
   }
   const inCurrentConversation = (newServerMsg: MessageItem) => {
     switch (newServerMsg.sessionType) {
@@ -396,7 +562,7 @@ export function useGlobalEvent() {
   watch(
     () => userStore.storeSelfInfo.userID,
     () => {
-      cacheConversationList = []
+      // 用户切换时清理状态
     },
   )
 
@@ -433,8 +599,12 @@ export function useGlobalEvent() {
 
   onMounted(() => {
     setIMListener()
+    window.addEventListener('focus', onWindowFocus)
+    loadOriginalFavicon()
   })
   onUnmounted(() => {
     disposeIMListener()
+    window.removeEventListener('focus', onWindowFocus)
+    clearFlashTitle()
   })
 }

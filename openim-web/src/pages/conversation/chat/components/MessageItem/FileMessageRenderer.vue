@@ -15,8 +15,8 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { FileElem } from '@openim/wasm-client-sdk/lib/types/entity'
-import { ExedMessageItem } from './data'
+import type { FileElem } from '@openim/wasm-client-sdk/lib/types/entity'
+import type { ExedMessageItem } from './data'
 
 interface Props {
   message: ExedMessageItem

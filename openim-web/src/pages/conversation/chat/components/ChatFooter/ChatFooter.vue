@@ -188,7 +188,7 @@ const insertEmoji = (emoji: string) => {
 
 const getFile = async (uploadData: UploaderFileListItem) => {
   let messageType = MessageType.FileMessage
-  if (uploadData.file?.type.includes('image')) {
+  if (uploadData.file?.type?.includes('image')) {
     messageType = MessageType.PictureMessage
   }
   try {

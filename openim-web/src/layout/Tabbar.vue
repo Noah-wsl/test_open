@@ -13,7 +13,10 @@
         class="menu-item"
         :class="{ active: route.path === item.path || route.path.startsWith(item.path + '/') }"
       >
-        <img :src="isActive(item.path) ? item.iconActive : item.icon" class="menu-icon" />
+        <div class="menu-icon-wrap">
+          <img :src="isActive(item.path) ? item.iconActive : item.icon" class="menu-icon" />
+          <span v-if="item.badge" class="menu-badge">{{ item.badge > 99 ? '99+' : item.badge }}</span>
+        </div>
         <span class="menu-label">{{ item.label }}</span>
       </router-link>
     </div>
@@ -269,10 +272,31 @@ const menuItems = computed(() => [
   }
 }
 
+.menu-icon-wrap {
+  position: relative;
+  margin-bottom: 2px;
+}
+
 .menu-icon {
   width: 24px;
   height: 24px;
-  margin-bottom: 2px;
+}
+
+.menu-badge {
+  position: absolute;
+  top: -4px;
+  right: -8px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background-color: #ff4d4f;
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 8px;
+  border: 1px solid #fff;
+  box-sizing: border-box;
 }
 
 .menu-label {
