@@ -1,6 +1,6 @@
 const BASE_HOST = 'sdoachat.com'
 const CHAT_URL = `https://${BASE_HOST}/api`
-const API_URL = `https://${BASE_HOST}/chat`
+const API_URL = `https://${BASE_HOST}/im-api`
 const WS_URL = `wss://${BASE_HOST}/msg_gateway`
 
 export default {
