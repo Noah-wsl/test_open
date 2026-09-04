@@ -1,4 +1,4 @@
-const BASE_HOST = '192.168.0.125'
+const BASE_HOST = 'sdoachat.com'
 const CHAT_URL = `http://${BASE_HOST}:10008`
 const API_URL = `http://${BASE_HOST}:10002`
 const WS_URL = `ws://${BASE_HOST}:10001`
